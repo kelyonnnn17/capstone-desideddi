@@ -12,6 +12,27 @@ The original methodology was developed by Eunyoung Kim. The codebase has been fu
 
 ---
 
+## 📁 Project Structure
+
+```text
+DeSIDE-DDI/
+├── app.py                      # Flask Backend API Server
+├── data/                       # Datasets & Expression Matrices
+├── scripts/                    # CLI Utilities (Moved from Root)
+│   ├── ddi_prediction.py       # Predicts new interactions
+│   ├── feature_generation.py   # Extracts significant genes
+│   └── feature_analysis.py     # Generates latent visualizations
+├── ddi_model/                  # DDI Neural Network Core architecture
+├── feature_model/              # Feature Generation Core architecture
+├── static/                     # Frontend Assets (CSS, JS)
+├── templates/                  # Frontend HTML (Glassmorphism UI)
+├── trained_model/              # Pre-trained .h5 Weights & Thresholds
+├── run_mac_linux.sh            # 1-Click Launch Script (Apple/Linux)
+└── run_windows.bat             # 1-Click Launch Script (Windows)
+```
+
+---
+
 ## 💻 Quick Start (Web Application)
 
 You do not need to manually create virtual environments or install pip packages. The included scripts will automatically configure everything and open the AI Engine in your browser!
