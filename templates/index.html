@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeSIDE DDI | AI Prediction Agent</title>
+    <!-- Modern Web Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    
+    <div class="background-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <main class="glass-container">
+        
+        <header>
+            <div class="logo-box">
+                <h1>DeSIDE-<span>DDI</span></h1>
+            </div>
+            <p class="subtitle">Deep Learning Side-Effect Discovery Engine</p>
+        </header>
+
+        <section class="predictor-module">
+            
+            <div class="drug-selectors">
+                <div class="input-group">
+                    <label for="drug1">Molecule Alpha</label>
+                    <select id="drug1" class="glass-select" disabled>
+                        <option value="">Loading Database...</option>
+                    </select>
+                </div>
+
+                <div class="connector">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </div>
+
+                <div class="input-group">
+                    <label for="drug2">Molecule Beta</label>
+                    <select id="drug2" class="glass-select" disabled>
+                        <option value="">Loading Database...</option>
+                    </select>
+                </div>
+            </div>
+
+            <button id="predict-btn" class="glass-btn" disabled>
+                <span class="btn-text">Compute Interaction Vector</span>
+                <span class="spinner hidden"></span>
+            </button>
+            
+        </section>
+
+        <!-- Dynamic Results Section -->
+        <section id="results-panel" class="results-container hidden">
+            <h2 class="results-title">Projected Anomalies</h2>
+            <div class="results-meta" id="results-meta"></div>
+            
+            <div class="cards-grid" id="cards-grid">
+                <!-- Javascript maps the API data here -->
+            </div>
+        </section>
+        
+    </main>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

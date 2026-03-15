@@ -1,14 +1,14 @@
-from feature_model_functions import *
+from .feature_model_functions import *
 
 import tensorflow as tf
-import keras
-from keras.layers import *
-from keras.regularizers import *
-import keras.backend as K
-from keras.models import Model, Sequential
-from keras.optimizers import Adam
-from keras.callbacks import ModelCheckpoint, Callback, EarlyStopping
-from keras import metrics
+from tensorflow import keras
+from tensorflow.keras.layers import *
+from tensorflow.keras.regularizers import *
+import tensorflow.keras.backend as K
+from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint, Callback, EarlyStopping
+from tensorflow.keras import metrics
 
 
 class Feature_model(object):
@@ -74,10 +74,18 @@ class Feature_model(object):
         return self.model.summary()
     
     def tf_pearson(self, y_true, y_pred):
-        return tf.contrib.metrics.streaming_pearson_correlation(y_pred, y_true)[1]
+        x = y_true
+        y = y_pred
+        mx = K.mean(x, axis=0)
+        my = K.mean(y, axis=0)
+        xm, ym = x - mx, y - my
+        r_num = K.sum(xm * ym, axis=0)
+        r_den = K.sqrt(K.sum(K.square(xm), axis=0) * K.sum(K.square(ym), axis=0))
+        r = r_num / (r_den + K.epsilon())
+        return K.mean(K.maximum(K.minimum(r, 1.0), -1.0))
     
     def set_checkpoint(self):
-        checkpoint = ModelCheckpoint(self.model_save_path+self.model_name+'.h5', monitor='loss', verbose=1, save_best_only=self.save_best_only, mode='min', period=1)
+        checkpoint = ModelCheckpoint(self.model_save_path+self.model_name+'.h5', monitor='loss', verbose=1, save_best_only=self.save_best_only, mode='min', save_freq='epoch')
         self.callbacks.append(checkpoint)
         self.callbacks.append(CosineAnnealingScheduler(T_max=self.t_max, eta_max=self.eta_max))
                 

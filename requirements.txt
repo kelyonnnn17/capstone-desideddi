@@ -1,0 +1,18 @@
+# For modern macOS with Apple Silicon (M1/M2/M3/M4/M5)
+# Use: pip install -r requirements.txt
+# Note for macOS: you may need to install tensorflow-macos and tensorflow-metal separately for native GPU support:
+# pip install tensorflow-macos tensorflow-metal
+
+# For Windows/Linux with NVIDIA GPUs, tensorflow will automatically pull in CUDA support (TF 2.12+)
+
+tensorflow>=2.12.0
+pandas>=1.5.0
+numpy>=1.23.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+rdkit-pypi>=2022.9.5
+jupyter==1.0.0
+scikit-learn>=1.2.0
+Flask>=2.3.0
+Flask-Cors>=4.0.0

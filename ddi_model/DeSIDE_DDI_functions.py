@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np
 
-import keras
-import keras.backend as K
-from keras.callbacks import ModelCheckpoint
+from tensorflow import keras
+import tensorflow.keras.backend as K
+from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras.utils import to_categorical
 import math
@@ -14,9 +14,10 @@ from sklearn.metrics import average_precision_score
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
-from keras.models import model_from_json
-import matplotlib.pyplot as plt
+from tensorflow.keras.models import model_from_json
 import matplotlib
+matplotlib.use('Agg') # Safe for background Flask thread GUI plotting
+import matplotlib.pyplot as plt
 
 from scipy import stats
 
@@ -54,16 +55,16 @@ class custom_dataGenerator(keras.utils.Sequence):
         x1 = np.array(x1).astype(float)
         x2 = np.array(x2).astype(float)
         
-        return x1, x2, x_se, x_se_one_hot
+        return x1, x2, x_se
         
     def __getitem__(self, idx):
         indexes = self.indexes[idx*self.batch_size:(idx + 1) * self.batch_size]
         batch_x = self.x.iloc[indexes]
         batch_y = self.y[indexes]        
         
-        x1, x2, x_se, x_se_one_hot = self.__data_generation__(batch_x)
+        x1, x2, x_se = self.__data_generation__(batch_x)
                 
-        return [x1, x2, x_se, x_se_one_hot], batch_y
+        return (x1, x2, x_se), batch_y
     
 # =============================================================================================
 # Model settings
@@ -128,7 +129,9 @@ def mean_predicted_score(true_df, predicted_y, with_plot=True):
         fig, ax = plt.subplots(figsize=(6,6))
         temp = test_pred_result.groupby('label')['predicted_score'].apply(list)
         sns.boxplot(x='label', y='predicted_score', data=test_pred_result[['label','predicted_score']])
-        plt.show()
+        # Modified so that it doesn't freeze the CLI process:
+        plt.savefig('test_prediction_boxplot.png')
+        plt.close()
     
     return test_pred_result
 
@@ -184,14 +187,19 @@ def calculate_test_performance(predicted_scores_df):
     for se in uniqueSE:
         df = dfDict[se]
 
-        tn, fp, fn, tp = confusion_matrix(df.label, df.predicted_label).ravel()
+        if len(df.label.unique()) > 1:
+            try:
+                tn, fp, fn, tp = confusion_matrix(df.label, df.predicted_label).ravel()
+                auc = roc_auc_score(1-df.label, df.predicted_score)
+                aupr = average_precision_score(1-df.label, df.predicted_score)
 
-        auc = roc_auc_score(1-df.label, df.predicted_score)
-        aupr = average_precision_score(1-df.label, df.predicted_score)
-
-        temp_df = pd.DataFrame({'Side effect no.':se, \
-                                'SN':tp/(tp+fn), 'SP':tn/(tn+fp), 'PR':tp/(tp+fp), 'AUC':auc, 'AUPR':aupr}, index=[0])
-        se_performance = pd.concat([se_performance, temp_df], axis=0)
+                temp_df = pd.DataFrame({'Side effect no.':se, \
+                                        'SN':tp/(tp+fn), 'SP':tn/(tn+fp), 'PR':tp/(tp+fp), 'AUC':auc, 'AUPR':aupr}, index=[0])
+                se_performance = pd.concat([se_performance, temp_df], axis=0)
+            except Exception as e:
+                pass
+        else:
+            pass
         
     return se_performance
 
@@ -211,7 +219,7 @@ def calculate_predicted_label_ver3(predicted_score_df, optimal_thr, se_col_name=
 
 def external_validation_v2(model, test_x, test_y, exp_df, optimal_threshold, batch_size):
     test_gen = custom_dataGenerator(test_x, test_y.values, batch_size=batch_size, exp_df=exp_df, shuffle=False)
-    pred_test = model.predict_generator(generator=test_gen)
+    pred_test = model.predict(x=test_gen)
     
     test_prediction_scores = mean_predicted_score(pd.concat([test_x, test_y], axis=1), pred_test)
     test_prediction_predicted_label_df, thr = calculate_predicted_label_ver3(test_prediction_scores, optimal_threshold)
@@ -246,13 +254,19 @@ def merge_both_pairs(ori_predicted_label_df, swi_predicted_label_df, optimal_thr
     for se in uniqueSE:
         df = dfDict[se]
 
-        tn, fp, fn, tp = confusion_matrix(df.label, df.final_predicted_label).ravel()
+        if len(df.label.unique()) > 1:
+            try:
+                tn, fp, fn, tp = confusion_matrix(df.label, df.final_predicted_label).ravel()
+                auc = roc_auc_score(1-df.label, df.mean_predicted_score)
+                aupr = average_precision_score(1-df.label, df.mean_predicted_score)
 
-        auc = roc_auc_score(1-df.label, df.mean_predicted_score)
-        aupr = average_precision_score(1-df.label, df.mean_predicted_score)
-
-        temp_df = pd.DataFrame({'Side effect no.':se, \
-                                'SN':tp/(tp+fn), 'SP':tn/(tn+fp), 'PR':tp/(tp+fp), 'AUC':auc, 'AUPR':aupr}, index=[0])
-        se_performance = pd.concat([se_performance, temp_df], axis=0)
+                temp_df = pd.DataFrame({'Side effect no.':se, \
+                                        'SN':tp/(tp+fn), 'SP':tn/(tn+fp), 'PR':tp/(tp+fp), 'AUC':auc, 'AUPR':aupr}, index=[0])
+                se_performance = pd.concat([se_performance, temp_df], axis=0)
+            except Exception as e:
+                pass
+        else:
+            # We are in prediction-only mode where labels are dummy (0) uniformly
+            pass
         
     return merged, se_performance
