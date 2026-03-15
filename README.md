@@ -42,15 +42,15 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate.bat
 
 # Feature Generation Model
 # Extracts significant genes given drug pairs (Compound fingerprints & properties)
-python feature_generation.py
+python scripts/feature_generation.py
 
 # DDI Prediction Model
 # Evaluates predicted gene expressions and yields side effect scores
-python ddi_prediction.py
+python scripts/ddi_prediction.py
 
 # Feature Analysis
 # Visualizes changed latent features locally to images
-python feature_analysis.py
+python scripts/feature_analysis.py
 ```
 
 ## Original Colab Resources

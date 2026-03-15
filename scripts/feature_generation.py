@@ -1,5 +1,9 @@
 import argparse
 import os
+import sys
+# Add parent directory to module search path so local imports resolve correctly
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import pandas as pd
 import numpy as np
 
