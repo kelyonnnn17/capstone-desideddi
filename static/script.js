@@ -7,8 +7,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsMeta = document.getElementById('results-meta');
     const btnText = document.querySelector('.btn-text');
     const spinner = document.querySelector('.spinner');
+    
+    // LLM Export Variables
+    const exportLlmBtn = document.getElementById('export-llm-btn');
+    const exportBtnText = exportLlmBtn ? exportLlmBtn.querySelector('.btn-text') : null;
+    const exportSpinner = exportLlmBtn ? exportLlmBtn.querySelector('.spinner') : null;
+    const analyzeLlmBtn = document.getElementById('analyze-llm-btn');
+    const analyzeBtnText = analyzeLlmBtn ? analyzeLlmBtn.querySelector('.btn-text') : null;
+    const analyzeSpinner = analyzeLlmBtn ? analyzeLlmBtn.querySelector('.spinner') : null;
+    const llmAnalysisPanel = document.getElementById('llm-analysis-panel');
+    const llmAnalysisMeta = document.getElementById('llm-analysis-meta');
+    const llmAnalysisOutput = document.getElementById('llm-analysis-output');
 
     let isPredicting = false;
+    let isExporting = false;
+    let isAnalyzing = false;
+    let lastLlmPayload = null;
+    let lastPredictionKey = null;
+    let lastAnalysis = null;
+    let lastTopResults = [];
 
     // Load available drugs on page load
     fetch('/api/metadata')
@@ -54,17 +71,62 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function currentPredictionKey() {
+        return `${drug1Select.value || ''}:${drug2Select.value || ''}`;
+    }
+
+    function canSubmitPrediction() {
+        return drug1Select.value && drug2Select.value && drug1Select.value !== drug2Select.value && !isPredicting;
+    }
+
+    function setExportReady(isReady) {
+        if (!exportLlmBtn) return;
+        exportLlmBtn.disabled = !isReady || isExporting;
+    }
+
+    function setAnalyzeReady(isReady) {
+        if (!analyzeLlmBtn) return;
+        analyzeLlmBtn.disabled = !isReady || isAnalyzing || isPredicting;
+    }
+
+    function clearAnalysis() {
+        lastAnalysis = null;
+        if (llmAnalysisPanel) llmAnalysisPanel.classList.add('hidden');
+        if (llmAnalysisMeta) llmAnalysisMeta.textContent = '';
+        if (llmAnalysisOutput) llmAnalysisOutput.textContent = '';
+    }
+
     drug1Select.addEventListener('change', validateSelection);
     drug2Select.addEventListener('change', validateSelection);
+    drug1Select.addEventListener('change', () => {
+        lastLlmPayload = null;
+        lastPredictionKey = null;
+        lastTopResults = [];
+        setExportReady(false);
+        setAnalyzeReady(false);
+        clearAnalysis();
+    });
+    drug2Select.addEventListener('change', () => {
+        lastLlmPayload = null;
+        lastPredictionKey = null;
+        lastTopResults = [];
+        setExportReady(false);
+        setAnalyzeReady(false);
+        clearAnalysis();
+    });
 
-    // Handle Prediction Click
-    predictBtn.addEventListener('click', () => {
+    function triggerPrediction() {
+        if (!canSubmitPrediction()) return;
+
         isPredicting = true;
         predictBtn.disabled = true;
-        btnText.textContent = "Synthesizing...";
+        btnText.textContent = "Running DeSIDE + BioMistral...";
         spinner.classList.remove('hidden');
         resultsContainer.classList.add('hidden');
         cardsGrid.innerHTML = '';
+        setExportReady(false);
+        setAnalyzeReady(false);
+        clearAnalysis();
         
         const payload = {
             drug1: parseInt(drug1Select.value),
@@ -74,12 +136,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const d1Name = drug1Select.options[drug1Select.selectedIndex].text.split(' (')[0];
         const d2Name = drug2Select.options[drug2Select.selectedIndex].text.split(' (')[0];
 
-        fetch('/api/predict', {
+        fetch('/api/analyze_llm', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                ...payload,
+                include_payload: false,
+                include_prompt: false
+            })
         })
         .then(res => res.json())
         .then(data => {
@@ -93,7 +159,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            lastLlmPayload = null;
+            lastPredictionKey = currentPredictionKey();
+            lastTopResults = data.top_results || [];
+            lastAnalysis = data.analysis || data.simple_analysis || '';
+            setExportReady(true);
+            setAnalyzeReady(true);
             renderResults(data, d1Name, d2Name);
+            renderAnalysis(data);
         })
         .catch(err => {
             console.error(err);
@@ -101,7 +174,20 @@ document.addEventListener('DOMContentLoaded', () => {
             btnText.textContent = "Compute Interaction Vector";
             spinner.classList.add('hidden');
             validateSelection();
+            setExportReady(false);
+            setAnalyzeReady(false);
             alert("Network error. Make sure the Flask backend is running.");
+        });
+    }
+
+    // Handle Prediction Click
+    predictBtn.addEventListener('click', triggerPrediction);
+    [drug1Select, drug2Select].forEach(select => {
+        select.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                triggerPrediction();
+            }
         });
     });
 
@@ -151,5 +237,127 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         cardsGrid.innerHTML = cardsHtml;
+    }
+
+    function renderAnalysis(data) {
+        if (!llmAnalysisPanel || !llmAnalysisOutput || !llmAnalysisMeta) return;
+        llmAnalysisPanel.classList.remove('hidden');
+        llmAnalysisMeta.textContent = `Model: ${data.ollama?.model || 'unknown'} | Reviewed side effect: ${data.selected_side_effect || 'N/A'}${data.ollama?.repaired ? ' | Output repaired to required format' : ''}`;
+        llmAnalysisOutput.textContent = data.analysis || data.simple_analysis || 'No analysis returned.';
+    }
+
+    // Handle LLM Export Click
+    if(exportLlmBtn) {
+        setExportReady(false);
+        exportLlmBtn.addEventListener('click', () => {
+            if (isExporting || isPredicting) return;
+            
+            isExporting = true;
+            exportLlmBtn.disabled = true;
+            exportBtnText.textContent = "Extracting Embeddings...";
+            exportSpinner.classList.remove('hidden');
+
+            const payload = {
+                drug1: parseInt(drug1Select.value),
+                drug2: parseInt(drug2Select.value)
+            };
+
+            const exportPromise = fetch('/api/export_llm', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                }).then(res => res.json());
+
+            exportPromise
+            .then(data => {
+                isExporting = false;
+                exportBtnText.textContent = "Export LLM Payload JSON";
+                exportSpinner.classList.add('hidden');
+                setExportReady(true);
+                
+                if(data.error) {
+                    alert(`Export Error: ${data.error}`);
+                    return;
+                }
+
+                lastLlmPayload = data.llm_payload || null;
+                lastPredictionKey = currentPredictionKey();
+
+                const blob = new Blob([JSON.stringify(data.llm_payload, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `DeSIDE_LLM_Payload_D${payload.drug1}_D${payload.drug2}.json`;
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            })
+            .catch(err => {
+                console.error("Export Error: ", err);
+                isExporting = false;
+                exportBtnText.textContent = "Export LLM Payload JSON";
+                exportSpinner.classList.add('hidden');
+                setExportReady(Boolean(lastLlmPayload));
+                alert('Failed to extract LLM payload from backend engine.');
+            });
+        });
+    }
+
+    if(analyzeLlmBtn) {
+        setAnalyzeReady(false);
+        analyzeLlmBtn.addEventListener('click', () => {
+            if (isAnalyzing || isPredicting) return;
+
+            isAnalyzing = true;
+            analyzeLlmBtn.disabled = true;
+            analyzeBtnText.textContent = "Running BioMistral...";
+            analyzeSpinner.classList.remove('hidden');
+
+            const topEffect = lastTopResults?.[0]?.name || null;
+            const payload = {
+                drug1: parseInt(drug1Select.value),
+                drug2: parseInt(drug2Select.value),
+                predicted_side_effect: topEffect,
+                include_payload: false,
+                include_prompt: false
+            };
+
+            fetch('/api/analyze_llm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(data => {
+                isAnalyzing = false;
+                analyzeBtnText.textContent = "Analyze with BioMistral";
+                analyzeSpinner.classList.add('hidden');
+                setAnalyzeReady(Boolean(lastPredictionKey));
+
+                if (data.error) {
+                    alert(`LLM Analysis Error: ${data.error}`);
+                    return;
+                }
+
+                lastTopResults = data.top_results || lastTopResults;
+                lastAnalysis = data.analysis || data.simple_analysis || '';
+                renderAnalysis(data);
+            })
+            .catch(err => {
+                console.error("LLM Analysis Error:", err);
+                isAnalyzing = false;
+                analyzeBtnText.textContent = "Analyze with BioMistral";
+                analyzeSpinner.classList.add('hidden');
+                setAnalyzeReady(Boolean(lastPredictionKey));
+                alert('Failed to run the Ollama BioMistral analysis.');
+            });
+        });
     }
 });

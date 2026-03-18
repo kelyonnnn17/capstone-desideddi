@@ -59,6 +59,23 @@
             <h2 class="results-title">Projected Anomalies</h2>
             <div class="results-meta" id="results-meta"></div>
             
+            <div style="margin-bottom: 30px; display: flex; justify-content: flex-start;">
+                <button id="export-llm-btn" class="glass-btn" style="padding: 12px 24px; font-size: 1rem; width: auto;">
+                    <span class="btn-text">Export LLM Payload JSON</span>
+                    <span class="spinner hidden"></span>
+                </button>
+                <button id="analyze-llm-btn" class="glass-btn" style="padding: 12px 24px; font-size: 1rem; width: auto; margin-left: 12px;">
+                    <span class="btn-text">Analyze with BioMistral</span>
+                    <span class="spinner hidden"></span>
+                </button>
+            </div>
+
+            <div id="llm-analysis-panel" class="hidden" style="margin-bottom: 24px;">
+                <h3 style="margin-bottom: 12px;">LLM Adjudication</h3>
+                <div id="llm-analysis-meta" style="margin-bottom: 12px; color: var(--text-secondary);"></div>
+                <pre id="llm-analysis-output" style="white-space: pre-wrap; background: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.5); border-radius: 16px; padding: 18px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.95rem; line-height: 1.5;"></pre>
+            </div>
+            
             <div class="cards-grid" id="cards-grid">
                 <!-- Javascript maps the API data here -->
             </div>
