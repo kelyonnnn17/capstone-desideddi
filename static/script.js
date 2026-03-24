@@ -167,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setAnalyzeReady(true);
             renderResults(data, d1Name, d2Name);
             renderAnalysis(data);
+            loadGraph(payload.drug1, payload.drug2);
         })
         .catch(err => {
             console.error(err);

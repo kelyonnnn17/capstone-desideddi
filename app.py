@@ -7,6 +7,12 @@ import numpy as np
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
+from graph.builder import build_reasoning_graph
+import networkx as nx
+
+from rag.data_loader import load_rag_data
+from rag.retriever import retrieve_context
+
 import tensorflow as tf
 from ddi_model.model import DDI_model
 from ddi_model.data_load import load_exp
@@ -149,6 +155,9 @@ def _build_llm_payload_log_preview(llm_payload):
     return preview
 
 def boot_ai_engine():
+    print("-> Loading RAG Knowledge Base...")
+    load_rag_data()
+
     print("-> Loading Expression Matrix...")
     try:
         state['ts_exp'] = load_exp(file_path=DATA_DIR)
@@ -415,7 +424,7 @@ def _get_pubmed_evidence(drug_a, drug_b, max_articles=3):
         for idx, pmid in enumerate(pmids):
             summary = summary_data.get(pmid, {})
             title = summary.get("title", f"PMID {pmid}")
-            snippet = abstract_chunks[idx][:700] if idx < len(abstract_chunks) else ""
+            snippet = abstract_chunks[idx][:250] if idx < len(abstract_chunks) else ""
             evidence.append({
                 "pmid": pmid,
                 "title": title,
@@ -426,11 +435,15 @@ def _get_pubmed_evidence(drug_a, drug_b, max_articles=3):
         print(f"PubMed grounding unavailable for {drug_a} + {drug_b}: {exc}")
         return []
 
-def _call_ollama_messages(messages, temperature=0.1, num_predict=350):
+def _safe_trim(text, max_chars=300):
+    return text[:max_chars] if text else ""
+
+def _call_ollama_messages(messages, temperature=0.1, num_predict=140):
     request_body = json.dumps({
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": False,
+        "keep_alive" : 0,
         "options": {
             "temperature": temperature,
             "top_p": 0.9,
@@ -544,6 +557,12 @@ def _generate_chain_of_thought_analysis(llm_payload, predicted_side_effect=None,
 
     drug_a = llm_payload["input"]["drug1"]["name"]
     drug_b = llm_payload["input"]["drug2"]["name"]
+
+
+    rag_query = f"{drug_a} {drug_b} drug interaction mechanism"
+    rag_docs = retrieve_context(rag_query)
+    rag_text = "\n".join(rag_docs)
+
     context = demographic_context or DEFAULT_DEMOGRAPHIC_CONTEXT
     pubmed_evidence = _get_pubmed_evidence(drug_a, drug_b)
     evidence_text = "\n".join(
@@ -554,6 +573,7 @@ def _generate_chain_of_thought_analysis(llm_payload, predicted_side_effect=None,
     step1 = _generate_text_section(
         user_prompt=(
             f"Concurrent co-administration case.\nDrug A: {drug_a}\nDrug B: {drug_b}\n"
+            f"Retrieved biomedical knowledge:\n{rag_text}\n"
             f"Pair-specific literature evidence:\n{evidence_text}\n"
             "Write Step 1 only as a direct paragraph of 2 to 4 sentences. "
             "Use the literature evidence first, and only then general pharmacology. "
@@ -591,9 +611,10 @@ def _generate_chain_of_thought_analysis(llm_payload, predicted_side_effect=None,
         user_prompt=(
             f"Concurrent co-administration case.\nDrug A: {drug_a}\nDrug B: {drug_b}\n"
             f"Demographic context: {context}\n"
+            f"Retrieved biomedical knowledge: {rag_text}\n"
             f"Pair-specific literature evidence: {evidence_text}\n"
-            f"Baseline analysis: {step1['text']}\n"
-            f"Gene-based evaluation: {step2['text']}\n"
+            f"Baseline analysis: {_safe_trim(step1['text'])}\n"
+            f"Gene-based evaluation: {_safe_trim(step2['text'])}\n"
             f"Predicted side effect: {selected_effect}\n"
             "Write Step 3 only as a direct paragraph of 3 to 5 sentences. "
             "Adjudicate whether the predicted side effect is a genuine pharmacological consequence or likely observational noise. "
@@ -851,6 +872,47 @@ def analyze_llm():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/graph', methods=['POST'])
+def get_graph():
+    data = request.json
+    d1 = data['drug1']
+    d2 = data['drug2']
+
+    def extract_id(drug):
+        if isinstance(drug, dict):
+            return (
+                drug.get('id') or
+                drug.get('pubchemID') or
+                drug.get('value')
+            )
+        return drug
+
+    d1_id = extract_id(d1)
+    d2_id = extract_id(d2)
+
+    if d1_id is None or d2_id is None:
+        print("GRAPH BAD INPUT:", data)
+        return jsonify({"error": "Invalid drug input"}), 400
+
+    _, positives = _run_prediction(d1_id, d2_id)
+    llm_payload = _build_llm_payload(d1_id, d2_id, positives)
+
+    drug_a = _get_drug_name(d1_id)
+    drug_b = _get_drug_name(d2_id)
+
+    rag_docs = retrieve_context(f"{drug_a} {drug_b} interaction")
+
+    G = build_reasoning_graph(
+        drug_a,
+        drug_b,
+        llm_payload["predictions"]["top_results"],
+        llm_payload["model_features"]["top_input_genes"],
+        rag_docs
+    )
+
+    return jsonify(nx.node_link_data(G))
+
 
 if __name__ == '__main__':
     # Launch on Port 5003, visible to all local networks
